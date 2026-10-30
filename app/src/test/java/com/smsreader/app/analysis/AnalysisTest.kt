@@ -91,4 +91,54 @@ class AnalysisTest {
         assertEquals(listOf(1, 1, 0, 1), s.byBucket.map { it.count })
         assertEquals("rent", s.byPayee.first().label)
     }
+
+    private fun msOf(date: LocalDate, hour: Int = 12) =
+        date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() + hour * 3_600_000L
+
+    private fun payOn(date: LocalDate, paise: Long, category: Category = Category.OTHER) = Payment(
+        Transaction(paise, "x", "x", Channel.UPI, null, msOf(date), "VM-BANK", ""),
+        tagKey = "x",
+        groupKey = "x",
+        name = "x",
+        category = category,
+    )
+
+    @Test fun timelineByDayIncludesEmptyDaysAndSkipsCardBills() {
+        val today = LocalDate.of(2026, 10, 30)
+        val window = Period.THIS_MONTH.window(today, null, ZoneOffset.UTC)
+        val t = timeline(
+            listOf(
+                payOn(LocalDate.of(2026, 10, 3), 10000),
+                payOn(LocalDate.of(2026, 10, 3), 2500),
+                payOn(LocalDate.of(2026, 10, 30), 4000),
+                payOn(LocalDate.of(2026, 10, 12), 900000, Category.CARD_BILL),
+            ),
+            window,
+            ZoneOffset.UTC,
+        )
+        assertEquals(Step.DAY, t.step)
+        assertEquals(30, t.buckets.size)
+        assertEquals(LocalDate.of(2026, 10, 1), t.buckets.first().start)
+        assertEquals(12500L, t.buckets[2].paise)
+        assertEquals(0L, t.buckets[11].paise)
+        assertEquals(4000L, t.buckets.last().paise)
+    }
+
+    @Test fun timelineByWeekStartsOnMondayAndByMonthForLongRanges() {
+        val today = LocalDate.of(2026, 10, 30)
+        val weeks = timeline(
+            listOf(payOn(LocalDate.of(2026, 8, 1), 100), payOn(LocalDate.of(2026, 8, 3), 200)),
+            Period.LAST_3_MONTHS.window(today, null, ZoneOffset.UTC),
+            ZoneOffset.UTC,
+        )
+        assertEquals(Step.WEEK, weeks.step)
+        assertEquals(LocalDate.of(2026, 7, 27), weeks.buckets.first().start) // Monday before Sat 1 Aug
+        assertEquals(listOf(100L, 200L), weeks.buckets.take(2).map { it.paise })
+
+        val months = timeline(listOf(payOn(LocalDate.of(2025, 9, 20), 100), payOn(LocalDate.of(2026, 10, 2), 300)), null, ZoneOffset.UTC)
+        assertEquals(Step.MONTH, months.step)
+        assertEquals(14, months.buckets.size)
+        assertEquals(300L, months.buckets.last().paise)
+        assertTrue(timeline(emptyList(), null, ZoneOffset.UTC).buckets.isEmpty())
+    }
 }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -12,30 +13,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,9 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -57,25 +36,24 @@ import com.smsreader.app.ui.OverviewScreen
 import com.smsreader.app.ui.PayeeEditor
 import com.smsreader.app.ui.PaymentSheet
 import com.smsreader.app.ui.PaymentsScreen
+import com.smsreader.app.ui.PeriodSelection
+import com.smsreader.app.ui.PermissionScreen
 import com.smsreader.app.ui.RecurringScreen
+import com.smsreader.app.ui.SpendScaffold
 import com.smsreader.app.ui.SpendTheme
 import com.smsreader.app.ui.SpendViewModel
+import com.smsreader.app.ui.Tab
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The tab bar paints its own background down to the screen edge.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
         setContent { SpendTheme { App() } }
     }
 }
 
-private enum class Tab(val label: String, val icon: ImageVector) {
-    OVERVIEW("Overview", Icons.Default.Home),
-    PAYMENTS("Payments", Icons.AutoMirrored.Filled.List),
-    RECURRING("Recurring", Icons.Default.DateRange),
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun App(vm: SpendViewModel = viewModel()) {
     val context = LocalContext.current
@@ -90,48 +68,28 @@ private fun App(vm: SpendViewModel = viewModel()) {
     var tab by rememberSaveable { mutableStateOf(Tab.OVERVIEW) }
     var openPayment by remember { mutableStateOf<Payment?>(null) }
     var editing by remember { mutableStateOf<EditTarget?>(null) }
+    val selection = PeriodSelection(vm.period, vm.customRange, vm::setPeriod)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Spend Tracker") },
-                actions = {
-                    if (granted) {
-                        IconButton(onClick = vm::load) { Icon(Icons.Default.Refresh, contentDescription = "Reload SMS") }
-                    }
-                },
+    SpendScaffold(tab = tab, onTab = { tab = it }, showNavigation = granted, onRefresh = if (granted) vm::load else null) {
+        when {
+            !granted -> PermissionScreen(
+                onAllow = { requestPermission.launch(Manifest.permission.READ_SMS) },
+                onOpenSettings = { openAppSettings(context) },
             )
-        },
-        bottomBar = {
-            if (granted) {
-                NavigationBar {
-                    Tab.entries.forEach { t ->
-                        NavigationBarItem(
-                            selected = tab == t,
-                            onClick = { tab = t },
-                            icon = { Icon(t.icon, contentDescription = null) },
-                            label = { Text(t.label) },
-                        )
-                    }
+            !vm.loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.primary)
+            else -> {
+                when (tab) {
+                    Tab.OVERVIEW -> OverviewScreen(
+                        payments = vm.visiblePayments,
+                        selection = selection,
+                        smsScanned = vm.smsScanned,
+                        totalFound = vm.payments.size,
+                        onPayee = { editing = EditTarget.of(it, vm) },
+                    )
+                    Tab.PAYMENTS -> PaymentsScreen(vm.visiblePayments, selection, onOpen = { openPayment = it })
+                    Tab.RECURRING -> RecurringScreen(vm.recurring, onOpen = { editing = EditTarget.of(it.latest, vm) })
                 }
-            }
-        },
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            when {
-                !granted -> PermissionScreen(
-                    onAllow = { requestPermission.launch(Manifest.permission.READ_SMS) },
-                    onOpenSettings = { openAppSettings(context) },
-                )
-                !vm.loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                else -> {
-                    when (tab) {
-                        Tab.OVERVIEW -> OverviewScreen(vm, onPayee = { editing = EditTarget.of(it, vm) })
-                        Tab.PAYMENTS -> PaymentsScreen(vm, onOpen = { openPayment = it })
-                        Tab.RECURRING -> RecurringScreen(vm, onOpen = { editing = EditTarget.of(it.latest, vm) })
-                    }
-                    if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
-                }
+                if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
             }
         }
     }
@@ -154,32 +112,6 @@ private fun App(vm: SpendViewModel = viewModel()) {
                 vm.saveTag(target.tagKey, label, category)
                 editing = null
             },
-        )
-    }
-}
-
-@Composable
-private fun PermissionScreen(onAllow: () -> Unit, onOpenSettings: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-    ) {
-        Text("Track where your money goes", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "Spend Tracker reads the SMS your bank, UPI apps and wallets send when money leaves your " +
-                "account, and turns them into a spending summary.",
-        )
-        Text(
-            "Everything stays on this phone. The app has no internet permission, so your messages " +
-                "cannot be sent anywhere.",
-        )
-        Button(onClick = onAllow, modifier = Modifier.fillMaxWidth()) { Text("Allow SMS access") }
-        TextButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("Open app settings") }
-        Text(
-            "No permission prompt? Android blocks SMS access for apps installed from a file. In app " +
-                "settings, tap ⋮ → Allow restricted settings, then Permissions → SMS → Allow.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

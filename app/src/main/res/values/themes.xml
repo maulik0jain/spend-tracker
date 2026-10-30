@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only what shows before Compose draws: the window background matches the app's page colour. -->
+    <style name="Theme.SpendTracker" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/page</item>
+    </style>
+</resources>

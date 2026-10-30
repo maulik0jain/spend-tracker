@@ -2,8 +2,12 @@ package com.smsreader.app.analysis
 
 import com.smsreader.app.data.Category
 import com.smsreader.app.data.Payment
+import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
 
 /** Half-open time window [startMs, endMs). */
 data class Window(val startMs: Long, val endMs: Long) {
@@ -82,3 +86,46 @@ fun summarise(payments: List<Payment>): Summary {
 
 private fun total(id: String, label: String, payments: List<Payment>) =
     Total(id, label, payments.size, payments.sumOf { it.txn.amountPaise })
+
+enum class Step { DAY, WEEK, MONTH }
+
+/** Spending in one day, week (Monday first) or month starting on [start]. */
+data class Bucket(val start: LocalDate, val paise: Long)
+
+data class Timeline(val step: Step, val buckets: List<Bucket>)
+
+/**
+ * Spending over [window] (oldest first): by day for up to 45 days, by week for up to 26 weeks,
+ * otherwise by month. No window means from the first payment to the last. Credit-card bill
+ * payments are left out, as in [summarise].
+ */
+fun timeline(payments: List<Payment>, window: Window?, zone: ZoneId = ZoneId.systemDefault()): Timeline {
+    val spending = payments.filter { it.category != Category.CARD_BILL }
+    fun day(ms: Long) = Instant.ofEpochMilli(ms).atZone(zone).toLocalDate()
+    val first = window?.let { day(it.startMs) } ?: spending.minOfOrNull { day(it.txn.timestamp) }
+    val last = window?.let { day(it.endMs - 1) } ?: spending.maxOfOrNull { day(it.txn.timestamp) }
+    if (first == null || last == null || last < first) return Timeline(Step.DAY, emptyList())
+
+    val days = ChronoUnit.DAYS.between(first, last) + 1
+    val step = when {
+        days <= 45 -> Step.DAY
+        days <= 26 * 7 -> Step.WEEK
+        else -> Step.MONTH
+    }
+    fun startOf(d: LocalDate): LocalDate = when (step) {
+        Step.DAY -> d
+        Step.WEEK -> d.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        Step.MONTH -> d.withDayOfMonth(1)
+    }
+    fun next(d: LocalDate): LocalDate = when (step) {
+        Step.DAY -> d.plusDays(1)
+        Step.WEEK -> d.plusWeeks(1)
+        Step.MONTH -> d.plusMonths(1)
+    }
+    val sums = spending.groupBy { startOf(day(it.txn.timestamp)) }.mapValues { (_, ps) -> ps.sumOf { it.txn.amountPaise } }
+    val buckets = generateSequence(startOf(first), ::next)
+        .takeWhile { it <= last }
+        .map { Bucket(it, sums[it] ?: 0) }
+        .toList()
+    return Timeline(step, buckets)
+}

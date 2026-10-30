@@ -1,22 +1,29 @@
 package com.smsreader.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,9 +31,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.smsreader.app.R
 import com.smsreader.app.data.Category
 import com.smsreader.app.data.Payment
 import com.smsreader.app.parse.TransactionParser
@@ -42,36 +52,70 @@ data class EditTarget(val tagKey: String, val payee: String, val label: String?,
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaymentSheet(payment: Payment, onDismiss: () -> Unit, onEditPayee: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = spendColors.panel) {
+        PaymentDetails(payment, onEditPayee, Modifier.verticalScroll(rememberScrollState()))
+    }
+}
+
+/** Everything about one payment, including the SMS it came from. */
+@Composable
+fun PaymentDetails(payment: Payment, onEditPayee: () -> Unit, modifier: Modifier = Modifier) {
     val txn = payment.txn
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    Column(
+        modifier
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CategoryTile(payment.category, size = 48.dp)
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(payment.name, style = MaterialTheme.typography.titleMedium)
+                Text(payment.category.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Amount(
+            txn.amountPaise,
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        Text(formatDateTime(txn.timestamp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         Column(
             Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(top = 20.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            Text(rupees(txn.amountPaise), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(payment.name, style = MaterialTheme.typography.titleMedium)
-            Column(Modifier.padding(vertical = 12.dp)) {
-                Detail("Paid to", txn.payee)
-                Detail("Category", payment.category.label)
-                Detail("Method", txn.channel.label)
-                Detail("When", formatDateTime(txn.timestamp))
-                txn.reference?.let { Detail("Reference", it) }
-                Detail("SMS from", txn.sender)
-            }
-            Text("Original SMS", style = MaterialTheme.typography.labelLarge)
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 16.dp),
-            ) {
-                Text(txn.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
-            }
-            if (txn.payee != TransactionParser.UNKNOWN_PAYEE) {
-                Button(onClick = onEditPayee, modifier = Modifier.fillMaxWidth()) {
-                    Text("Name or categorise this payee")
-                }
+            Detail("Paid to", txn.payee)
+            Detail("Method", txn.channel.label)
+            txn.reference?.let { Detail("Reference", it) }
+            Detail("SMS from", txn.sender)
+        }
+
+        Row(Modifier.padding(top = 24.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_sms_outline), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("The SMS", style = MaterialTheme.typography.titleSmall)
+        }
+        // Drawn as a received message: square corner where the bubble's tail would be.
+        Text(
+            txn.body,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 18.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .padding(14.dp),
+        )
+        if (txn.payee != TransactionParser.UNKNOWN_PAYEE) {
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = onEditPayee, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) {
+                Icon(painterResource(R.drawable.ic_edit_outline), contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Name or categorise this payee", style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -79,7 +123,7 @@ fun PaymentSheet(payment: Payment, onDismiss: () -> Unit, onEditPayee: () -> Uni
 
 @Composable
 private fun Detail(label: String, value: String) {
-    Row(Modifier.padding(vertical = 2.dp)) {
+    Row(Modifier.padding(vertical = 8.dp)) {
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
@@ -98,22 +142,36 @@ fun PayeeEditor(target: EditTarget, onDismiss: () -> Unit, onSave: (label: Strin
     var category by remember { mutableStateOf(target.category) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Payee") },
+        containerColor = spendColors.panel,
+        title = { Text("Name this payee", style = MaterialTheme.typography.titleLarge) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("Paid to: ${target.payee}", style = MaterialTheme.typography.bodySmall)
+                Text("Paid to ${target.payee}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
                     label = { Text("Your name for it") },
                     placeholder = { Text("e.g. Son – pocket money") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 16.dp),
                 )
-                Text("Category", style = MaterialTheme.typography.labelLarge)
+                Text("Category", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Category.entries.forEach { c ->
-                        FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c.label) })
+                        FilterChip(
+                            selected = category == c,
+                            onClick = { category = c },
+                            label = { Text(c.label) },
+                            leadingIcon = {
+                                Icon(painterResource(iconOf(c)), contentDescription = null, tint = iconColorOf(c), modifier = Modifier.size(18.dp))
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = colorOf(c).copy(alpha = if (spendColors.dark) 0.28f else 0.16f),
+                                selectedLabelColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        )
                     }
                 }
             }
