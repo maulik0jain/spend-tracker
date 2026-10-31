@@ -4,6 +4,11 @@
     <!-- The only permission. No INTERNET: SMS contents can never leave the phone. -->
     <uses-permission android:name="android.permission.READ_SMS" />
 
+    <!-- Lets the app check whether Google Sheets is installed before opening it. Not a permission. -->
+    <queries>
+        <package android:name="com.google.android.apps.docs.editors.sheets" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

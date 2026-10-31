@@ -23,6 +23,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,15 +52,15 @@ data class EditTarget(val tagKey: String, val payee: String, val label: String?,
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PaymentSheet(payment: Payment, onDismiss: () -> Unit, onEditPayee: () -> Unit) {
+fun PaymentSheet(payment: Payment, onDismiss: () -> Unit, onEditPayee: () -> Unit, onAddToSheets: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = spendColors.panel) {
-        PaymentDetails(payment, onEditPayee, Modifier.verticalScroll(rememberScrollState()))
+        PaymentDetails(payment, onEditPayee, onAddToSheets, Modifier.verticalScroll(rememberScrollState()))
     }
 }
 
 /** Everything about one payment, including the SMS it came from. */
 @Composable
-fun PaymentDetails(payment: Payment, onEditPayee: () -> Unit, modifier: Modifier = Modifier) {
+fun PaymentDetails(payment: Payment, onEditPayee: () -> Unit, onAddToSheets: () -> Unit, modifier: Modifier = Modifier) {
     val txn = payment.txn
     Column(
         modifier
@@ -110,9 +111,15 @@ fun PaymentDetails(payment: Payment, onEditPayee: () -> Unit, modifier: Modifier
                 .background(MaterialTheme.colorScheme.surfaceContainer)
                 .padding(14.dp),
         )
+        Spacer(Modifier.height(24.dp))
+        Button(onClick = onAddToSheets, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) {
+            Icon(painterResource(R.drawable.ic_table_view_outline), contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Add to Google Sheets", style = MaterialTheme.typography.labelLarge)
+        }
         if (txn.payee != TransactionParser.UNKNOWN_PAYEE) {
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = onEditPayee, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) {
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = onEditPayee, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) {
                 Icon(painterResource(R.drawable.ic_edit_outline), contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Name or categorise this payee", style = MaterialTheme.typography.labelLarge)

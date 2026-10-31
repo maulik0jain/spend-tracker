@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.smsreader.app.data.Payment
+import com.smsreader.app.export.Sheets
 import com.smsreader.app.ui.EditTarget
 import com.smsreader.app.ui.OverviewScreen
 import com.smsreader.app.ui.PayeeEditor
@@ -86,7 +87,13 @@ private fun App(vm: SpendViewModel = viewModel()) {
                         totalFound = vm.payments.size,
                         onPayee = { editing = EditTarget.of(it, vm) },
                     )
-                    Tab.PAYMENTS -> PaymentsScreen(vm.visiblePayments, selection, onOpen = { openPayment = it })
+                    Tab.PAYMENTS -> PaymentsScreen(
+                        payments = vm.visiblePayments,
+                        selection = selection,
+                        onOpen = { openPayment = it },
+                        onAddToSheets = { Sheets.add(context, it) },
+                        onCopyHeadings = { Sheets.addHeadings(context) },
+                    )
                     Tab.RECURRING -> RecurringScreen(vm.recurring, onOpen = { editing = EditTarget.of(it.latest, vm) })
                 }
                 if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
@@ -101,6 +108,10 @@ private fun App(vm: SpendViewModel = viewModel()) {
             onEditPayee = {
                 openPayment = null
                 editing = EditTarget.of(payment, vm)
+            },
+            onAddToSheets = {
+                openPayment = null
+                Sheets.add(context, payment)
             },
         )
     }

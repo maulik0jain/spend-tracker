@@ -1,11 +1,19 @@
 package com.smsreader.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.smsreader.app.analysis.Frequency
@@ -17,10 +25,12 @@ import com.smsreader.app.data.Payment
 import com.smsreader.app.data.Transaction
 import com.smsreader.app.ui.OverviewScreen
 import com.smsreader.app.ui.PaymentDetails
+import com.smsreader.app.ui.PaymentRow
 import com.smsreader.app.ui.PaymentsScreen
 import com.smsreader.app.ui.PeriodSelection
 import com.smsreader.app.ui.PermissionScreen
 import com.smsreader.app.ui.RecurringScreen
+import com.smsreader.app.ui.SheetsSwipeBackground
 import com.smsreader.app.ui.SpendScaffold
 import com.smsreader.app.ui.SpendTheme
 import com.smsreader.app.ui.Tab
@@ -119,7 +129,7 @@ private fun Overview(dark: Boolean) = Frame(Tab.OVERVIEW, dark) {
 }
 
 @Composable
-private fun PaymentsList(dark: Boolean) = Frame(Tab.PAYMENTS, dark) { PaymentsScreen(payments, thisMonth, onOpen = {}, today = today) }
+private fun PaymentsList(dark: Boolean) = Frame(Tab.PAYMENTS, dark) { PaymentsScreen(payments, thisMonth, onOpen = {}, onAddToSheets = {}, onCopyHeadings = {}, today = today) }
 
 @Composable
 private fun Regulars(dark: Boolean) = Frame(Tab.RECURRING, dark) { RecurringScreen(regulars, onOpen = {}, now = now) }
@@ -144,6 +154,34 @@ fun PaymentsLightPreview() = PaymentsList(dark = false)
 @Composable
 fun PaymentsDarkPreview() = PaymentsList(dark = true)
 
+/** A row at rest, part-way through a swipe, and past the point where letting go adds it. */
+@Composable
+private fun Swiping(dark: Boolean) = SpendTheme(dark = dark) {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SwipedRow(payments[2], by = 0.dp, armed = false)
+            SwipedRow(payments[3], by = 96.dp, armed = false)
+            SwipedRow(payments[4], by = 236.dp, armed = true)
+        }
+    }
+}
+
+@Composable
+private fun SwipedRow(payment: Payment, by: Dp, armed: Boolean) {
+    Box(Modifier.clip(RoundedCornerShape(20.dp))) {
+        Box(Modifier.matchParentSize()) { SheetsSwipeBackground(armed) }
+        Box(Modifier.offset(x = by)) { PaymentRow(payment, onClick = {}) }
+    }
+}
+
+@Preview(name = "payments-swipe", widthDp = 400, heightDp = 300)
+@Composable
+fun PaymentsSwipePreview() = Swiping(dark = false)
+
+@Preview(name = "payments-swipe-dark", widthDp = 400, heightDp = 300)
+@Composable
+fun PaymentsSwipeDarkPreview() = Swiping(dark = true)
+
 @Preview(name = "recurring", widthDp = 400, heightDp = 1100)
 @Composable
 fun RecurringLightPreview() = Regulars(dark = false)
@@ -155,7 +193,7 @@ fun RecurringDarkPreview() = Regulars(dark = true)
 @Preview(name = "payment-details", widthDp = 400, heightDp = 880)
 @Composable
 fun PaymentDetailsPreview() = SpendTheme(dark = false) {
-    Box(Modifier.background(spendColors.panel).padding(top = 24.dp)) { PaymentDetails(payments[2], onEditPayee = {}) }
+    Box(Modifier.background(spendColors.panel).padding(top = 24.dp)) { PaymentDetails(payments[2], onEditPayee = {}, onAddToSheets = {}) }
 }
 
 @Preview(name = "permission", widthDp = 400, heightDp = 880)

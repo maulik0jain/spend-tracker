@@ -1,5 +1,7 @@
 package com.smsreader.app.ui
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -10,27 +12,39 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +57,8 @@ fun PaymentsScreen(
     payments: List<Payment>,
     selection: PeriodSelection,
     onOpen: (Payment) -> Unit,
+    onAddToSheets: (Payment) -> Unit,
+    onCopyHeadings: () -> Unit,
     today: LocalDate = LocalDate.now(),
     initialQuery: String = "",
 ) {
@@ -74,6 +90,7 @@ fun PaymentsScreen(
             Amount(shown.sumOf { it.txn.amountPaise }, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
         }
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+            item(key = "sheets-hint") { SheetsHint(onCopyHeadings) }
             days.forEach { (date, dayPayments) ->
                 item(key = "day-$date") { DayHeader(dayLabel(date, today), dayPayments.sumOf { it.txn.amountPaise }) }
                 itemsIndexed(dayPayments, key = { _, p -> "${p.txn.timestamp}-${p.txn.amountPaise}-${p.txn.payeeKey}" }) { i, payment ->
@@ -86,11 +103,89 @@ fun PaymentsScreen(
                             .background(spendColors.panel),
                     ) {
                         if (i > 0) RowDivider()
-                        PaymentRow(payment, onClick = { onOpen(payment) })
+                        SwipeToSheets(onSwiped = { onAddToSheets(payment) }) {
+                            PaymentRow(payment, onClick = { onOpen(payment) })
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/** Swiping a row to the right hands the payment to Google Sheets; the row then springs back. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToSheets(onSwiped: () -> Unit, content: @Composable () -> Unit) {
+    val swiped by rememberUpdatedState(onSwiped)
+    val state = rememberSwipeToDismissBoxState(positionalThreshold = { width -> width * 0.35f })
+    val armed = state.targetValue == SwipeToDismissBoxValue.StartToEnd
+    val view = LocalView.current
+    LaunchedEffect(armed) {
+        if (armed) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+    }
+    LaunchedEffect(state.currentValue) {
+        if (state.currentValue == SwipeToDismissBoxValue.StartToEnd) {
+            swiped()
+            state.snapTo(SwipeToDismissBoxValue.Settled)
+        }
+    }
+    SwipeToDismissBox(
+        state = state,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            if (state.dismissDirection == SwipeToDismissBoxValue.StartToEnd) SheetsSwipeBackground(armed)
+        },
+        // The same action for anyone who can't swipe, from the TalkBack actions menu.
+        modifier = Modifier.semantics {
+            customActions = listOf(CustomAccessibilityAction("Add to Google Sheets") { swiped(); true })
+        },
+    ) {
+        content()
+    }
+}
+
+/** What shows behind a row being swiped. Turns solid once letting go will add the payment. */
+@Composable
+internal fun SheetsSwipeBackground(armed: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val container by animateColorAsState(if (armed) colors.primary else colors.primaryContainer, label = "swipe container")
+    val content by animateColorAsState(if (armed) colors.onPrimary else colors.onPrimaryContainer, label = "swipe content")
+    Row(
+        Modifier
+            .fillMaxSize()
+            .background(container)
+            .padding(horizontal = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(R.drawable.ic_table_view_outline), contentDescription = null, tint = content)
+        Spacer(Modifier.width(12.dp))
+        Text("Add to Google Sheets", style = MaterialTheme.typography.labelLarge, color = content)
+    }
+}
+
+@Composable
+private fun SheetsHint(onCopyHeadings: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 8.dp, top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painterResource(R.drawable.ic_table_view_outline),
+            contentDescription = null,
+            tint = spendColors.muted,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Swipe a payment right to add it to Google Sheets",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onCopyHeadings) { Text("Copy headings") }
     }
 }
 
@@ -139,10 +234,12 @@ private fun DayHeader(label: String, paise: Long) {
 }
 
 @Composable
-private fun PaymentRow(payment: Payment, onClick: () -> Unit) {
+internal fun PaymentRow(payment: Payment, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
+            // Opaque, so the swipe background only shows where the row has moved away.
+            .background(spendColors.panel)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
